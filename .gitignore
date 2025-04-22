@@ -1,0 +1,26 @@
+# Frontend
+**/*.ui
+**/*.ts
+**/*.qm
+**/*.qrc
+**/*.png
+**/*.ico
+**/*.ipynb
+
+# Backend
+**/sql/
+
+# Frontend&Backend generated files
+**/TestResult.json
+**/User Profile/
+
+# Generated contents
+**/__pycache__/
+**/*.build/
+**/*.dist/
+**/build/
+**/dist/
+
+# Others
+**/*venv/
+*.txt
