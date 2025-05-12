@@ -148,13 +148,7 @@ class PromptTestTool:
         @self._app.post("/shutdown")
         async def shutdown():
             self.server.should_exit = True
-            Process = psutil.Process(os.getpid())
-            ProcessList =  Process.children(recursive = True) + [Process]
-            for Process in ProcessList:
-                try:
-                    os.kill(Process.pid, signal.SIGTERM)
-                except:
-                    pass
+            EasyUtils.terminateProcess(os.getpid())
             #return {"message": "Shutting down, bye..."}
 
     def setChatActuator(self):
@@ -242,7 +236,7 @@ class PromptTestTool:
             promptDir = Path(currentDir).joinpath("prompt").as_posix()
             configPath = Path(currentDir).joinpath("config", source, f"config-{env.strip()}.ini" if EasyUtils.evalString(env) is not None else "config.ini").as_posix()
             gptClient = GPTClient(source, EasyUtils.evalString(apiKey), configPath, promptDir)
-            contentStream = gptClient.run(EasyUtils.evalString(model), messages, options) if EasyUtils.evalString(testTimes) is None else gptClient.test(EasyUtils.evalString(model), messages, options, testTimes)
+            contentStream = gptClient.run(EasyUtils.evalString(model), messages, options) if EasyUtils.evalString(testTimes) is None else gptClient.test(EasyUtils.evalString(model), messages, options, int(testTimes))
             return StreamingResponse(
                 content = contentStream,
                 media_type = "application/json"
@@ -257,7 +251,7 @@ class PromptTestTool:
             promptDir = Path(currentDir).joinpath("prompt").as_posix()
             configPath = Path(currentDir).joinpath("config", source, f"config-{env.strip()}.ini" if EasyUtils.evalString(env) is not None else "config.ini").as_posix()
             assistantClient = AssistantClient(source, EasyUtils.evalString(apiKey), configPath, promptDir)
-            contentStream = assistantClient.run(EasyUtils.evalString(code), messages, options) if EasyUtils.evalString(testTimes) is None else assistantClient.test(EasyUtils.evalString(code), messages, options, testTimes)
+            contentStream = assistantClient.run(EasyUtils.evalString(code), messages, options) if EasyUtils.evalString(testTimes) is None else assistantClient.test(EasyUtils.evalString(code), messages, options, int(testTimes))
             return StreamingResponse(
                 content = contentStream,
                 media_type = "application/json"

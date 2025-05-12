@@ -140,7 +140,7 @@ class GPTClient(object):
         for result, statuscode in gptRequest(
             sourceName,
             **kwargs,
-            model = "claude-3-5-sonnet@20240620",
+            model = model,
             messages = [
                 {
                     'role': "system",
