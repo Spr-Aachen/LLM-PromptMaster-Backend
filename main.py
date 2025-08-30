@@ -14,17 +14,8 @@ from fastapi.responses import Response, JSONResponse, StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pathlib import Path
 
 from routers import router_utils, router_chat
-
-##############################################################################################################################
-
-# Get current path
-currentPath = EasyUtils.getCurrentPath()
-
-# Get current directory
-currentDir = Path(currentPath).parent.as_posix()
 
 ##############################################################################################################################
 
@@ -33,7 +24,6 @@ parser = argparse.ArgumentParser()
 #parser.add_argument("--env",  help = "环境启动项", type = str, default = "prod")
 parser.add_argument("--host", help = "主机地址",   type = str, default = "localhost")
 parser.add_argument("--port", help = "端口",       type = int, default = 8080)
-parser.add_argument("--profileDir", help = "配置目录", type = str, default = Path(currentDir).joinpath('Profile').as_posix())
 args = parser.parse_args()
 
 ##############################################################################################################################
