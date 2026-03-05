@@ -13,6 +13,14 @@ class SourceName:
     transsion = 'transsion'
 
 
+supportedSources = (
+    SourceName.azure,
+    SourceName.deepseek,
+    SourceName.openai,
+    SourceName.transsion,
+)
+
+
 modelsInfo = {
     SourceName.azure: list(request_azure.chatURLs.keys()),
     SourceName.deepseek: list(request_deepseek.chatURLs.keys()),

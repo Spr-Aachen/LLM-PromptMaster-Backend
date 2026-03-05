@@ -1,12 +1,13 @@
+# Editor config
+**/.vscode/
+
 # Generated contents
 **/__pycache__/
-**/*.build/
-**/*.dist/
+**/logs/
+
+# Built contents
+**/src-tauri/gen
+**/target/
 **/build/
 **/dist/
-
-# Others
-**/venv/
-**/*.spec
-**/*.ipynb
-**/*.txt
+**/install/

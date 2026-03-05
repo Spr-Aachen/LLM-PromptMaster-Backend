@@ -1,44 +1,45 @@
-import os, sys
 import PyEasyUtils as EasyUtils
 from fastapi.routing import APIRouter
 from fastapi.requests import Request
-from fastapi.responses import Response, JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.datastructures import UploadFile
 from fastapi.param_functions import Depends
 from pathlib import Path
 from typing import Union, Optional, List
 
-from utils import TokenParam, checkToken, write_file, modelsInfo
+import config as serverConfig
+from utils import TokenParam, checkToken, write_file, modelsInfo, supportedSources
+from utils.errors import ApiError
 from gpt import GPTClient
 from assistant import AssistantClient
 from wrapper import ChatManager
 
 ##############################################################################################################################
 
-# Get current directory
-currentDir = Path(sys.argv[0]).parent.as_posix()
-
-# Set directory to load static dependencies
-resourceDir = EasyUtils.getBaseDir(searchMEIPASS = True) or currentDir
-
-# Check whether python file is compiled
-_, isFileCompiled = EasyUtils.getFileInfo()
-
-##############################################################################################################################
-
-UPLOAD_DIR = Path(currentDir).joinpath('profile', 'uploads').as_posix()
-
-PROMPT_DIR = Path(currentDir).joinpath('profile', 'prompts').as_posix()
-
-HISTORY_DIR = Path(currentDir).joinpath('profile', 'history').as_posix()
-conversationDir = Path(HISTORY_DIR).joinpath('conversations').as_posix()
-questionDir = Path(HISTORY_DIR).joinpath('questions').as_posix()
-
-##############################################################################################################################
-
 router_utils = APIRouter(
     prefix = "",
 )
+
+
+def resolveProviderConfig(source: str, env: Optional[str]):
+    """
+    校验 source/env 并返回（provider 配置文件路径, prompt 模板目录）
+    """
+    if source not in supportedSources:
+        raise ApiError(
+            code = "invalid_source",
+            message = f"不支持的来源：{source}",
+            details = {"source": source, "supported": list(supportedSources)},
+        )
+    envName = EasyUtils.evalString(env) or None
+    configPath = serverConfig.configDir.joinpath(source, f"config-{envName}.ini" if envName is not None else "config.ini")
+    if not configPath.is_file():
+        raise ApiError(
+            code = "invalid_env",
+            message = f"来源 {source} 不存在环境配置：{envName}",
+            details = {"source": source, "env": envName},
+        )
+    return configPath.as_posix(), serverConfig.promptTemplateDir.as_posix()
 
 
 @router_utils.get("/auth", summary = "验证token")
@@ -48,9 +49,9 @@ async def auth(token: TokenParam = Depends(checkToken)):
 
 @router_utils.post("/upload")
 async def upload_file(files: List[UploadFile]):
-    os.makedirs(UPLOAD_DIR, exist_ok = True)
+    serverConfig.uploadDir.mkdir(parents = True, exist_ok = True)
     for file in files:
-        filePath = Path(UPLOAD_DIR).joinpath(file.filename).as_posix()
+        filePath = serverConfig.uploadDir.joinpath(file.filename).as_posix()
         os.remove(filePath) if Path(filePath).exists() else None
         await write_file(filePath, file)
     return {"status": "Succeeded"}
@@ -63,9 +64,9 @@ router_chat = APIRouter(
 
 
 chatManager = ChatManager(
-    promptDir = PROMPT_DIR,
-    conversationDir = conversationDir,
-    questionDir = questionDir
+    promptDir = serverConfig.promptDir.as_posix(),
+    conversationDir = serverConfig.conversationDir.as_posix(),
+    questionDir = serverConfig.questionDir.as_posix()
 )
 
 
@@ -164,12 +165,11 @@ async def recieveAnswer(historyID, recievedText):
 
 @router_chat.post("/gpt")
 async def gpt(request: Request, historyID: str, source: str, env: Optional[str] = None, model: Optional[str] = None, apiKey: Optional[str] = None, testTimes: Optional[Union[int, str]] = None):
+    configPath, promptDir = resolveProviderConfig(source, env)
     reqJs: dict = await request.json()
     message = reqJs.get('message', None)
     options = reqJs.get('options', None)
     messages = chatManager.getHistory(historyID)[0] + [message]
-    promptDir = Path(currentDir).joinpath("prompt").as_posix()
-    configPath = Path(currentDir).joinpath("config", source, f"config-{env.strip()}.ini" if EasyUtils.evalString(env) is not None else "config.ini").as_posix()
     gptClient = GPTClient(source, EasyUtils.evalString(apiKey), configPath, promptDir)
     contentStream = gptClient.run(EasyUtils.evalString(model), messages, options) if EasyUtils.evalString(testTimes) is None else gptClient.test(EasyUtils.evalString(model), messages, options, int(testTimes))
     return StreamingResponse(
@@ -180,12 +180,11 @@ async def gpt(request: Request, historyID: str, source: str, env: Optional[str] 
 
 @router_chat.post("/assistant")
 async def assistant(request: Request, historyID: str, source: str, env: Optional[str] = None, code: Optional[str] = None, apiKey: Optional[str] = None, testTimes: Optional[Union[int, str]] = None):
+    configPath, promptDir = resolveProviderConfig(source, env)
     reqJs: dict = await request.json()
     message = reqJs.get('message', None)
     options = reqJs.get('options', None)
     messages = chatManager.getHistory(historyID)[0] + [message]
-    promptDir = Path(currentDir).joinpath("prompt").as_posix()
-    configPath = Path(currentDir).joinpath("config", source, f"config-{env.strip()}.ini" if EasyUtils.evalString(env) is not None else "config.ini").as_posix()
     assistantClient = AssistantClient(source, EasyUtils.evalString(apiKey), configPath, promptDir)
     contentStream = assistantClient.run(EasyUtils.evalString(code), messages, options) if EasyUtils.evalString(testTimes) is None else assistantClient.test(EasyUtils.evalString(code), messages, options, int(testTimes))
     return StreamingResponse(
