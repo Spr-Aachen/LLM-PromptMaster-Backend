@@ -12,6 +12,8 @@ APP_NAME = "PromptMaster"
 
 VERSION = "1.0.0"
 
+DATA_DIR_NAME = "data"
+
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 LOG_DATEFORMAT = "%Y-%m-%d %H:%M:%S"
@@ -24,7 +26,7 @@ LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
 
 ##############################################################################################################################
 
-# 源码目录（server/）与项目根目录
+# 源码目录 (server/) 与项目根目录
 appDir = Path(__file__).resolve().parent
 sourceDir = appDir.parent
 
@@ -34,19 +36,19 @@ isFrozen = bool(getattr(sys, "frozen", False))
 # 可执行文件所在目录
 exeDir = Path(sys.executable).resolve().parent if isFrozen else sourceDir
 
-# 静态资源目录（兼容 PyInstaller 的解包目录）
+# 静态资源目录 (兼容 PyInstaller 的解包目录)
 resourceDir = Path(getattr(sys, "_MEIPASS", exeDir)) if isFrozen else sourceDir
 
 ##############################################################################################################################
 
 def parseArguments(argv: Optional[list] = None) -> argparse.Namespace:
     """
-    解析启动参数，仅在模块加载时执行一次
+    解析启动参数, 仅在模块加载时执行一次
     """
     parser = argparse.ArgumentParser(description = "LLM PromptMaster 服务端")
     parser.add_argument("--host", help = "监听地址", type = str, default = "127.0.0.1")
     parser.add_argument("--port", help = "监听端口", type = int, default = 8080)
-    parser.add_argument("--work-dir", dest = "workDir", help = "工作目录（数据与日志）", type = str, default = None)
+    parser.add_argument("--work-dir", dest = "workDir", help = "数据目录 (缺省为数据根目录下的 server/)", type = str, default = None)
     parser.add_argument("--log-level", dest = "logLevel", help = "日志级别", type = str, default = "info", choices = LOG_LEVELS)
     return parser.parse_args(argv)
 
@@ -54,21 +56,25 @@ def parseArguments(argv: Optional[list] = None) -> argparse.Namespace:
 args = parseArguments()
 
 
-def resolveWorkDir(explicit: Optional[str] = None) -> Path:
+def resolveDataRoot() -> Path:
     """
-    解析工作目录：显式参数优先，其次沿用随源码分发的 profile/，再次便携 data/，最后用户数据目录
+    解析数据根目录：打包时优先便携 <exe>/data, 否则用户数据目录; 源码运行时固定 <repo>/data
     """
-    if explicit:
-        return Path(explicit).expanduser().resolve()
-    profileCandidate = (exeDir if isFrozen else appDir).joinpath("profile")
-    if profileCandidate.is_dir():
-        return profileCandidate
-    portableCandidate = exeDir.joinpath("data")
-    if portableCandidate.is_dir():
-        return portableCandidate
+    if not isFrozen:
+        return sourceDir.joinpath(DATA_DIR_NAME)
+    portableRoot = exeDir.joinpath(DATA_DIR_NAME)
+    if portableRoot.is_dir():
+        return portableRoot
     appDataDir = os.environ.get("APPDATA")
     userDir = Path(appDataDir) if appDataDir else Path.home().joinpath(".local", "share")
     return userDir.joinpath(APP_NAME)
+
+
+def resolveWorkDir(explicit: Optional[str] = None) -> Path:
+    """
+    解析工作目录：显式参数即服务端数据目录, 否则为数据根目录下的 server/
+    """
+    return Path(explicit).expanduser().resolve() if explicit else resolveDataRoot().joinpath("server")
 
 
 host = args.host
@@ -103,7 +109,7 @@ def ensureDirs():
 
 def setupLogging(level: Optional[str] = None) -> logging.Logger:
     """
-    配置日志：控制台 + 轮转文件（logs/server.log）
+    配置日志：控制台 + 轮转文件 (logs/server.log)
     """
     ensureDirs()
     logger = logging.getLogger()
