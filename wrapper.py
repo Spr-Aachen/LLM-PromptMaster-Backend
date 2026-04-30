@@ -130,7 +130,7 @@ class ChatManager:
         # Load from file
         conversationFilePath, questionFilePath = self._getHistoryFilePath(historyID, conversationName)
         with open(conversationFilePath, 'r', encoding = 'utf-8') as f:
-            messages = [eval(message.strip()) for message in f.read().splitlines()] #messages = [json.loads(message) for message in f.readlines()]
+            messages = [json.loads(message) for message in f.read().splitlines() if message.strip()]
         with open(questionFilePath, 'r', encoding = 'utf-8') as f:
             question = f.read().strip()
         return messages, question

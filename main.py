@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from typing import Optional
 
 import config as serverConfig
+from middleware import RequestBodyLimitMiddleware
 from routers import router_utils, router_chat
 from utils.errors import ApiError, errorResponse
 
@@ -130,6 +131,7 @@ def createApp() -> FastAPI:
     app.include_router(router_chat)
     setExceptionHandler(app)
     setNormalActuator(app)
+    app.add_middleware(RequestBodyLimitMiddleware, maxBytes = serverConfig.maxRequestBodyBytes)
     return app
 
 

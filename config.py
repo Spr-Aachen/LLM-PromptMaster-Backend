@@ -24,6 +24,13 @@ LOG_BACKUP_COUNT = 3
 
 LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
 
+# 请求体与上传大小上限
+MAX_REQUEST_BODY_MB = 10
+MAX_UPLOAD_MB = 20
+
+maxRequestBodyBytes = MAX_REQUEST_BODY_MB * 1024 * 1024
+maxUploadBytes = MAX_UPLOAD_MB * 1024 * 1024
+
 ##############################################################################################################################
 
 # 源码目录 (server/) 与项目根目录
