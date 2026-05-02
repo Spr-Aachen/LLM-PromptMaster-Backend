@@ -31,6 +31,25 @@ MAX_UPLOAD_MB = 20
 maxRequestBodyBytes = MAX_REQUEST_BODY_MB * 1024 * 1024
 maxUploadBytes = MAX_UPLOAD_MB * 1024 * 1024
 
+# Provider 来源与展示名
+SUPPORTED_SOURCES = ("azure", "deepseek", "openai", "transsion")
+
+ASSISTANT_SOURCES = ("transsion",)
+
+SOURCE_LABELS = {
+    "azure": "Azure OpenAI",
+    "deepseek": "DeepSeek",
+    "openai": "OpenAI",
+    "transsion": "Transsion",
+}
+
+DEFAULT_AZURE_API_VERSION = "2024-10-21"
+
+# 模型目录与计量
+CATALOG_CACHE_SECONDS = 600
+DISCOVERY_TIMEOUT_SECONDS = 5.0
+USAGE_RANGES = ("today", "7d", "30d")
+
 ##############################################################################################################################
 
 # 源码目录 (server/) 与项目根目录
@@ -65,7 +84,7 @@ args = parseArguments()
 
 def resolveDataRoot() -> Path:
     """
-    解析数据根目录：打包时优先便携 <exe>/data, 否则用户数据目录; 源码运行时固定 <repo>/data
+    解析数据根目录: 打包时优先便携 <exe>/data, 否则用户数据目录; 源码运行时固定 <repo>/data
     """
     if not isFrozen:
         return sourceDir.joinpath(DATA_DIR_NAME)
@@ -79,7 +98,7 @@ def resolveDataRoot() -> Path:
 
 def resolveWorkDir(explicit: Optional[str] = None) -> Path:
     """
-    解析工作目录：显式参数即服务端数据目录, 否则为数据根目录下的 server/
+    解析工作目录: 显式参数即服务端数据目录, 否则为数据根目录下的 server/
     """
     return Path(explicit).expanduser().resolve() if explicit else resolveDataRoot().joinpath("server")
 
@@ -100,6 +119,12 @@ uploadDir = workDir.joinpath("uploads")
 logDir = workDir.joinpath("logs")
 logFile = logDir.joinpath("server.log")
 
+# Provider 密钥与模型目录覆盖 (忽略文件)
+providersFilePath = workDir.joinpath("providers.yaml")
+
+# token/成本计量库
+usageDbPath = workDir.joinpath("usage.db")
+
 # 随源码分发的资源目录
 configDir = appDir.joinpath("config")
 promptTemplateDir = appDir.joinpath("prompt")
@@ -116,7 +141,7 @@ def ensureDirs():
 
 def setupLogging(level: Optional[str] = None) -> logging.Logger:
     """
-    配置日志：控制台 + 轮转文件 (logs/server.log)
+    配置日志: 控制台 + 轮转文件 (logs/server.log)
     """
     ensureDirs()
     logger = logging.getLogger()

@@ -15,14 +15,15 @@ from typing import Optional
 
 import config as serverConfig
 from middleware import RequestBodyLimitMiddleware
-from routers import router_utils, router_chat
+from providers.settings import ensureProvidersFile
+from routers import router_api, router_chat, router_utils
 from utils.errors import ApiError, errorResponse
 
 ##############################################################################################################################
 
 logger = logging.getLogger(f"{serverConfig.APP_NAME}.server")
 
-# 关闭请求收到后先写回响应，再通知 uvicorn 退出
+# 关闭请求收到后先写回响应, 再通知 uvicorn 退出
 SHUTDOWN_DELAY = 0.2
 
 HTTP_ERROR_CODES = {
@@ -86,7 +87,7 @@ def setExceptionHandler(app: FastAPI):
 
 def requestExit(server: uvicorn.Server):
     """
-    等待响应写出后再通知 uvicorn 退出，避免关闭请求被提前中断
+    等待响应写出后再通知 uvicorn 退出, 避免关闭请求被提前中断
     """
     time.sleep(SHUTDOWN_DELAY)
     server.should_exit = True
@@ -122,6 +123,8 @@ def setNormalActuator(app: FastAPI):
 ##############################################################################################################################
 
 def createApp() -> FastAPI:
+    serverConfig.ensureDirs()
+    ensureProvidersFile()
     app = FastAPI(
         title = f"{serverConfig.APP_NAME} Server",
         version = serverConfig.VERSION,
@@ -129,6 +132,7 @@ def createApp() -> FastAPI:
     )
     app.include_router(router_utils)
     app.include_router(router_chat)
+    app.include_router(router_api)
     setExceptionHandler(app)
     setNormalActuator(app)
     app.add_middleware(RequestBodyLimitMiddleware, maxBytes = serverConfig.maxRequestBodyBytes)

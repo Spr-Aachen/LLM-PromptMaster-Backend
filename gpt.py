@@ -1,193 +1,104 @@
 """
-GPT工具类
+GPT 工具类: 注入系统 prompt、流式 JSON 封装与 token 计量
 """
 
 import json
-import threading
+import logging
 from PyEasyUtils import configManager
-from sqlalchemy import engine
-from pathlib import Path
 from typing import Optional, Union
 
-from utils import SourceName, gptRequest
-from utils.calc import computeSimilarity, average_similarity
+from evaluation import promptTestStream
+from promptTemplates import readTemplate
+from providers import ChatRequest, ProviderError, createChatClient
+from providers.metering import recordStream
 
 ##############################################################################################################################
+
+logger = logging.getLogger("PromptMaster.gpt")
+
 
 class GPTClient(object):
     """
     This class is used to interact with the GPT API
     """
-    def __init__(self, sourceName, apiKey, configPath, promptDir):
-        self.sourceName = sourceName
+    def __init__(self, settings, promptDir, usageStore = None, catalog = None):
+        self.settings = settings
+        self.promptDir = promptDir
+        self.usageStore = usageStore
+        self.catalog = catalog
+        self.client = createChatClient(settings)
 
-        cf = configManager(configPath)
-        self.gateway = cf.getValue("Auth", "gateway", None)
-        self.pfGateway = cf.getValue("Auth", "pfGateway", None)
-        self.gptGateway = cf.getValue("Auth", "gptGateway", None)
-        self.apiKey = apiKey or cf.getValue("Auth", "apiKey", None)
-        self.appID = cf.getValue("Auth", "appID", None)
-        self.appSecret = cf.getValue("Auth", "appSecret", None)
-        self.promptPath = Path(promptDir).joinpath(cf.getValue("Chat-GPT", "promptFile")).as_posix()
-        with open(self.promptPath, 'r', encoding = 'utf-8') as f:
-            self.Prompt = f.read()
-        self.promptStabilityEvaluatorPath = Path(promptDir).joinpath(cf.getValue("Chat-GPT", "promptFile_stabilityEvaluator")).as_posix()
-        with open(self.promptStabilityEvaluatorPath, 'r', encoding = 'utf-8') as f:
-            self.promptStabilityEvaluator = f.read()
-        self.promptReconstructorPath = Path(promptDir).joinpath(cf.getValue("Chat-GPT", "promptFile_reconstructor")).as_posix()
-        with open(self.promptReconstructorPath, 'r', encoding = 'utf-8') as f:
-            self.promptReconstructor = f.read()
-        '''
-        self.userName = cf.getValue("Test-SQL", "userName")
-        self.password = cf.getValue("Test-SQL", "password")
-        self.sqlURL = cf.getValue("Test-SQL", "sqlURL")
-        '''
+        manager = configManager(settings.configPath) if settings.configPath else None
+        self.Prompt = readTemplate(promptDir, manager, "promptFile")
+        self.promptStabilityEvaluator = readTemplate(promptDir, manager, "promptFile_stabilityEvaluator")
+        self.promptReconstructor = readTemplate(promptDir, manager, "promptFile_reconstructor")
 
-    def request(self,
-        sourceName: SourceName,
-        model: Optional[str] = None,
-        messages: list = [{}],
-        options: Optional[dict] = None,
-        stream: bool = True,
-        **kwargs
-    ):
-        return gptRequest(
-            sourceName,
-            **kwargs,
+    ######################################################################
+
+    def buildRequest(self, model: str, messages: list, options: Optional[dict], stream: bool) -> ChatRequest:
+        modelInfo = self.catalog.resolve(self.settings.source, model) if self.catalog else None
+        return ChatRequest(
+            provider = self.settings.source,
             model = model,
             messages = messages,
-            options = options,
+            options = options or {},
             stream = stream,
+            modelInfo = modelInfo,
         )
 
-    def promptTest(self,
-        sourceName: SourceName,
-        model: Optional[str] = None,
-        messages: list = [{}],
-        options: Optional[dict] = None,
-        stream: bool = True,
-        totalTestTimes: Optional[int] = None,
-        threashold: float = 0.9,
-        promptStabilityEvaluator: Optional[str] = None,
-        promptReconstructor: Optional[str] = None,
-        sqlConnection: Optional[Union[engine.Engine, engine.Connection]] = None,
-        **kwargs
-    ):
-        # Test the GPT model
-        if totalTestTimes is not None:
-            assert totalTestTimes > 0, 'Incorrect number!'
-        else:
-            return
-        CurrentTestTime = 1
-        Answers = []
-        while CurrentTestTime <= totalTestTimes:
-            print('Current test time:', CurrentTestTime) #yield f'Current test time: {CurrentTestTime}\n\n', 200
-            for result, statuscode in gptRequest(
-                sourceName,
-                **kwargs,
-                model = model,
-                messages = messages,
-                options = options,
-                stream = False
-            ): # This iteration would be only executed for once since the stream option is set to false
-                Answers.append(result)
-            CurrentTestTime += 1
+    def chunks(self, request: ChatRequest):
+        """
+        透传 provider 增量并记账
+        """
+        pricing = self.catalog.pricingFor(request.provider, request.model) if self.catalog else None
+        return recordStream(self.usageStore, self.client.stream(request), request, pricing)
 
-        # Compute the test results' similarity
-        recordingThread = threading.Thread(
-            target = computeSimilarity,
-            args = (Answers, messages[1]['content'], totalTestTimes, sqlConnection)
-        )
-        recordingThread.start()
+    @staticmethod
+    def frame(statusCode: int, data: str) -> str:
+        """
+        一行一帧 (NDJSON), 便于客户端按行切分
+        """
+        return json.dumps(
+            {"code": statusCode, "message": "成功" if statusCode == 200 else "失败", "data": data},
+            ensure_ascii = False,
+        ) + "\n"
 
-        # Analyze the test result
-        yield "本次测试结果正在分析与计算中，请稍后...\n\n", 200
-        for result, statuscode in gptRequest(
-            sourceName,
-            **kwargs,
-            model = "gpt-4o",
-            messages = [
-                {
-                    'role': "system",
-                    'content': promptStabilityEvaluator
-                },
-                {
-                    'role': "user",
-                    'content': '\n,\n'.join(Answers)
-                }
-            ],
-            stream = False
-        ): # This iteration would be only executed for once since the stream option is set to false
-            try:
-                assert statuscode == 200, '...'
-                yield f"分析完毕：\n\n{result}\n\n", 200
-                Stability = float(str(result).strip().strip('```'))
-            except:
-                yield f"本次测试返回值的稳定值提取失败，将使用本次测试返回值的相似度计算结果作为替代\n\n", 200
-                recordingThread.join()
-                Stability = average_similarity
-            if Stability >= threashold:
-                yield f"本次测试返回值的稳定性维持在：{Stability}\n\nprompt无需调优\n\n", 200
-                return # Stop iteration if the success rate is higher than threashold
-            elif Stability >= 0:
-                yield f"本次测试返回值的稳定性维持在：{Stability}\n\n建议对prompt进行调优\n\n", 200
+    def prepareMessages(self, messages: Union[str, list]) -> list:
+        if isinstance(messages, list) and messages and isinstance(messages[0], dict):
+            return messages
+        return [
+            {"role": "system", "content": self.Prompt},
+            {"role": "user", "content": str(messages)},
+        ]
 
-        # Evaluate the prompt
-        yield "开始prompt调优, please stand by...\n\n", 200
-        for Message in messages:
-            if Message['role'] == 'system':
-                Prompt = Message['content']
-        for result, statuscode in gptRequest(
-            sourceName,
-            **kwargs,
-            model = model,
-            messages = [
-                {
-                    'role': "system",
-                    'content': promptReconstructor
-                },
-                {
-                    'role': "user",
-                    'content': "```\n%s\n```" % Prompt
-                }
-            ],
-            stream = stream
-        ):
-            if statuscode != 200:
-                result = f"prompt调优失败"
-            yield result, 200
+    def resolveModel(self, model: Optional[str]) -> Optional[str]:
+        """
+        未显式指定模型时回退到目录默认模型
+        """
+        if model:
+            return model
+        return self.catalog.defaultModel(self.settings.source) if self.catalog else None
+
+    ######################################################################
 
     async def run(self,
         model: Optional[str] = None,
         messages: Union[str, list] = ...,
         options: Optional[dict] = None
     ):
-        messages = [
-            {
-                'role': "system",
-                'content': self.Prompt
-            },
-            {
-                'role': "user",
-                'content': str(messages),
-            }
-        ] if not (isinstance(messages, list) and isinstance(messages[0], dict)) else messages
-        for result, statuscode in self.request(
-            self.sourceName,
-            gateway = self.gateway,
-            pfGateway = self.pfGateway,
-            gptGateway = self.gptGateway,
-            apiKey = self.apiKey,
-            appID = self.appID,
-            appSecret = self.appSecret,
-            model = model,
-            messages = messages,
-            options = options,
-            stream = True
-        ):
-            yield json.dumps(
-                {"code": statuscode, "message": "成功" if statuscode == 200 else "失败", "data": result}
-            )
+        messages = self.prepareMessages(messages)
+        model = self.resolveModel(model)
+        if model is None:
+            yield self.frame(400, "[model_required] 未指定模型")
+            return
+        request = self.buildRequest(model, messages, options, stream = True)
+        try:
+            for chunk in self.chunks(request):
+                if chunk.delta:
+                    yield self.frame(200, chunk.delta)
+        except ProviderError as error:
+            logger.warning("来源 %s 模型 %s 调用失败: %s: %s", request.provider, request.model, error.code, error.message)
+            yield self.frame(error.statusCode, f"[{error.code}] {error.message}")
 
     async def test(self,
         model: Optional[str] = None,
@@ -195,37 +106,33 @@ class GPTClient(object):
         options: Optional[dict] = None,
         testTimes: Optional[int] = None
     ):
-        messages = [
-            {
-                'role': "system",
-                'content': self.Prompt
-            },
-            {
-                'role': "user",
-                'content': messages,
-            }
-        ] if not (isinstance(messages, list) and isinstance(messages[0], dict)) else messages
-        '''
-        sqlConnection = 
-        '''
-        for result, statuscode in self.promptTest(
-            self.sourceName,
-            gateway = self.gateway,
-            pfGateway = self.pfGateway,
-            gptGateway = self.gptGateway,
-            apiKey = self.apiKey,
-            appID = self.appID,
-            appSecret = self.appSecret,
-            model = model,
-            messages = messages,
-            options = options,
-            totalTestTimes = testTimes,
-            promptStabilityEvaluator = self.promptStabilityEvaluator,
-            promptReconstructor = self.promptReconstructor,
-            stream = True
-        ):
-            yield json.dumps(
-               {"code": statuscode, "message": "成功" if statuscode == 200 else "失败", "data": result}
-            )
+        messages = self.prepareMessages(messages)
+        defaultModel = self.resolveModel(model)
+        if defaultModel is None:
+            yield self.frame(400, "[model_required] 未指定模型")
+            return
+
+        def complete(targetMessages, model = None):
+            request = self.buildRequest(model or defaultModel, targetMessages, options, stream = False)
+            return "".join(chunk.delta for chunk in self.chunks(request))
+
+        def streamText(targetMessages, model = None):
+            request = self.buildRequest(model or defaultModel, targetMessages, options, stream = True)
+            for chunk in self.chunks(request):
+                if chunk.delta:
+                    yield chunk.delta
+
+        try:
+            for result, statusCode in promptTestStream(
+                messages,
+                testTimes,
+                complete = complete,
+                stream = streamText,
+                promptStabilityEvaluator = self.promptStabilityEvaluator,
+                promptReconstructor = self.promptReconstructor,
+            ):
+                yield self.frame(statusCode, result)
+        except ProviderError as error:
+            yield self.frame(error.statusCode, f"[{error.code}] {error.message}")
 
 ##############################################################################################################################

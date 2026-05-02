@@ -6,8 +6,12 @@
 **/logs/
 
 # Built contents
-**/src-tauri/gen
-**/target/
 **/build/
 **/dist/
 **/install/
+
+# Runtime data root
+data/
+
+# Others
+*.txt

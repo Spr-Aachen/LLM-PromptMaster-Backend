@@ -1,11 +1,20 @@
 from fastapi.routing import APIRouter
 from fastapi.responses import StreamingResponse
 from fastapi.datastructures import UploadFile
+from fastapi import Query
 from typing import List, Optional
 
 import config as serverConfig
-from utils import ASSISTANT_HANDLERS, modelsInfo, saveUpload, supportedSources
+from utils import saveUpload
 from utils.errors import ApiError
+from providers import (
+    ModelCatalog,
+    UsageStore,
+    assistantSources,
+    describeProviders,
+    getProviderSettings,
+    supportedSources,
+)
 from gpt import GPTClient
 from assistant import AssistantClient
 from wrapper import ChatManager
@@ -36,55 +45,6 @@ def normalizeOptional(value):
         return None
     value = str(value).strip()
     return None if value in ("", "None") else value
-
-
-def resolveProviderConfig(source: str, env: Optional[str]):
-    """
-    校验 source/env 并返回 (provider 配置文件路径, prompt 模板目录)
-    """
-    if source not in supportedSources:
-        raise ApiError(
-            code = "invalid_source",
-            message = f"不支持的来源: {source}",
-            details = {"source": source, "supported": list(supportedSources)},
-        )
-    envName = normalizeOptional(env)
-    sourceDir = serverConfig.configDir.joinpath(source)
-    if envName is None:
-        configPath = sourceDir.joinpath("config.ini")
-    else:
-        allowedEnvs = sorted(path.stem.split("-", 1)[-1] for path in sourceDir.glob("config-*.ini"))
-        if envName not in allowedEnvs:
-            raise ApiError(
-                code = "invalid_env",
-                message = f"来源 {source} 不存在环境配置: {envName}",
-                details = {"source": source, "env": envName, "supported": allowedEnvs},
-            )
-        configPath = sourceDir.joinpath(f"config-{envName}.ini")
-    if not configPath.is_file():
-        raise ApiError(
-            code = "invalid_env",
-            message = f"来源 {source} 缺少配置文件: {configPath.name}",
-            details = {"source": source, "env": envName},
-        )
-    return configPath.as_posix(), serverConfig.promptTemplateDir.as_posix()
-
-
-def validateModel(source: str, model: Optional[str]) -> Optional[str]:
-    """
-    校验 model 白名单
-    """
-    modelName = normalizeOptional(model)
-    if modelName is None:
-        return None
-    supportedModels = modelsInfo.get(source, [])
-    if modelName not in supportedModels:
-        raise ApiError(
-            code = "invalid_model",
-            message = f"来源 {source} 不支持模型: {modelName}",
-            details = {"source": source, "model": modelName, "supported": supportedModels},
-        )
-    return modelName
 
 
 def validateName(name: str, field: str) -> str:
@@ -124,18 +84,69 @@ chatManager = ChatManager(
     questionDir = serverConfig.questionDir.as_posix()
 )
 
+modelCatalog = ModelCatalog()
+
+usageStore = UsageStore(serverConfig.usageDbPath)
+
+
+def loadMessages(historyID: str) -> list:
+    """
+    读取历史消息, 未知会话返回 404 而不是 KeyError
+    """
+    try:
+        return chatManager.getHistory(historyID)[0]
+    except KeyError as exc:
+        raise ApiError(
+            code = "history_not_found",
+            message = f"会话不存在: {historyID}",
+            statusCode = 404,
+            details = {"historyID": historyID},
+        ) from exc
+
+
+def buildMessages(payload: ChatRequest) -> list:
+    """
+    历史消息 + 本次请求的消息
+    """
+    if payload.message is None:
+        raise ApiError(
+            code = "invalid_message",
+            message = "缺少 message",
+            details = {"historyID": payload.historyID},
+        )
+    return loadMessages(payload.historyID) + [payload.message]
+
+
+def resolveModel(source: str, model: Optional[str]) -> str:
+    """
+    目录内模型直接用; 目录外 id 也放行 (由 provider 决定是否可用); 缺省取目录默认模型
+    """
+    modelName = normalizeOptional(model)
+    if modelName is None:
+        modelName = modelCatalog.defaultModel(source)
+    if modelName is None:
+        raise ApiError(
+            code = "model_required",
+            message = f"来源 {source} 没有可用模型, 请显式指定 model",
+            details = {"source": source},
+        )
+    return modelName
+
 
 @router_chat.get("/getCapabilities")
 async def getCapabilities():
     return {
         "sources": list(supportedSources),
-        "assistantSources": list(ASSISTANT_HANDLERS),
+        "assistantSources": list(assistantSources),
     }
 
 
 @router_chat.get("/getModelsInfo")
 async def getModelsInfo():
-    return modelsInfo
+    """
+    兼容旧客户端的 {source: [modelId]} 结构; 新客户端使用 /api/meta/models
+    """
+    return {source: modelCatalog.modelIds(source) for source in supportedSources}
 
 
 @router_chat.get("/loadPrompts")
@@ -222,10 +233,10 @@ async def recieveAnswer(payload: AnswerReceiveRequest):
 
 @router_chat.post("/gpt")
 async def gpt(payload: ChatRequest):
-    configPath, promptDir = resolveProviderConfig(payload.source, payload.env)
-    model = validateModel(payload.source, payload.model)
-    messages = chatManager.getHistory(payload.historyID)[0] + [payload.message]
-    gptClient = GPTClient(payload.source, normalizeOptional(payload.apiKey), configPath, promptDir)
+    settings = getProviderSettings(payload.source, payload.env, payload.apiKey)
+    model = resolveModel(payload.source, payload.model)
+    messages = buildMessages(payload)
+    gptClient = GPTClient(settings, serverConfig.promptTemplateDir.as_posix(), usageStore, modelCatalog)
     contentStream = gptClient.run(model, messages, payload.options) if payload.testTimes is None else gptClient.test(model, messages, payload.options, payload.testTimes)
     return StreamingResponse(
         content = contentStream,
@@ -235,19 +246,50 @@ async def gpt(payload: ChatRequest):
 
 @router_chat.post("/assistant")
 async def assistant(payload: ChatRequest):
-    configPath, promptDir = resolveProviderConfig(payload.source, payload.env)
-    if payload.source not in ASSISTANT_HANDLERS:
-        raise ApiError(
-            code = "assistant_unsupported",
-            message = f"来源 {payload.source} 暂不支持 assistant",
-            statusCode = 501,
-            details = {"source": payload.source, "supported": list(ASSISTANT_HANDLERS)},
-        )
-    messages = chatManager.getHistory(payload.historyID)[0] + [payload.message]
-    assistantClient = AssistantClient(payload.source, normalizeOptional(payload.apiKey), configPath, promptDir)
-    assistantCode = normalizeOptional(payload.code)
-    contentStream = assistantClient.run(assistantCode, messages, payload.options) if payload.testTimes is None else assistantClient.test(assistantCode, messages, payload.options, payload.testTimes)
+    settings = getProviderSettings(payload.source, payload.env, payload.apiKey)
+    # 先校验来源是否支持 assistant, 未支持直接 501
+    assistantClient = AssistantClient(settings, serverConfig.promptTemplateDir.as_posix(), usageStore, modelCatalog)
+    messages = buildMessages(payload)
+    contentStream = assistantClient.run(payload.code, messages, payload.options) if payload.testTimes is None else assistantClient.test(payload.code, messages, payload.options, payload.testTimes)
     return StreamingResponse(
         content = contentStream,
         media_type = "application/json"
     )
+
+##############################################################################################################################
+
+router_api = APIRouter(
+    prefix = "/api",
+)
+
+
+@router_api.get("/meta/models")
+async def getMetaModels(refresh: bool = False):
+    """
+    模型目录 + catalogVersion; 客户端仅在版本变化时刷新下拉
+    """
+    return modelCatalog.snapshot(refresh = refresh)
+
+
+@router_api.get("/providers")
+async def getProviders():
+    """
+    provider 列表与配置状态 (密钥脱敏)
+    """
+    return describeProviders()
+
+
+@router_api.get("/usage")
+async def getUsage(rangeName: str = Query("today", alias = "range")):
+    """
+    token / 成本计量汇总 (不限额)
+    """
+    if rangeName not in serverConfig.USAGE_RANGES:
+        raise ApiError(
+            code = "invalid_range",
+            message = f"不支持的统计区间: {rangeName}",
+            details = {"range": rangeName, "supported": list(serverConfig.USAGE_RANGES)},
+        )
+    return usageStore.summary(rangeName)
+
+##############################################################################################################################

@@ -1,0 +1,54 @@
+# Provider 配置
+version: 1
+
+# [Essential] 需填写真实值
+providers:
+  azure:
+    baseUrl: https://<resource>.openai.azure.com
+    apiKey: <your-azure-api-key>
+    apiVersion: "2024-10-21"
+
+  openai:
+    baseUrl: https://api.openai.com/v1
+    apiKey: <your-openai-api-key>
+
+  deepseek:
+    baseUrl: https://api.deepseek.com
+    apiKey: <your-deepseek-api-key>
+
+  transsion:
+    # 不写 envs 时使用顶层配置; 写了 envs 则按 env 覆盖
+    envs:
+      uat:
+        gptGateway: https://<gpt-gateway-uat>
+        pfGateway: https://<pf-gateway-uat>:9199
+        appID: <your-app-id-uat>
+        appSecret: <your-app-secret-uat>
+        assistant:
+          xHeaderTenant: <tenant-uat>
+          chatURL: <assistant-chat-url-uat>
+          assistantCode: <assistant-code-uat>
+      prod:
+        gptGateway: https://<gpt-gateway>
+        pfGateway: https://<pf-gateway>:9199
+        appID: <your-app-id>
+        appSecret: <your-app-secret>
+        assistant:
+          xHeaderTenant: <tenant>
+          chatURL: <assistant-chat-url>
+          assistantCode: <assistant-code>
+
+# [Optional] 覆盖或补充内置模型目录; 目录外的 id 仍可直接调用, 但不会出现在下拉中
+models:
+  - id: my-openai-compatible-model
+    provider: openai
+    label: My Model
+    contextWindow: 128000
+    maxOutput: 8192
+    stream: true
+    vision: false
+    embedding: false
+    kind: chat
+    pricing:
+      input: 1.0
+      output: 2.0
