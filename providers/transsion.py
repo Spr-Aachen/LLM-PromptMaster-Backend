@@ -53,7 +53,7 @@ def unwrapCandidates(payload: dict) -> Iterator[dict]:
 
 class TranssionClient(BaseChatClient):
     """
-    Transsion GPT 网关客户端
+    Transsion 对话模型网关客户端
     """
     kind = "transsion"
     # 网关不保证支持 stream_options.include_usage, 缺失时由计量层估算并标记

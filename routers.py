@@ -15,7 +15,7 @@ from providers import (
     getProviderSettings,
     supportedSources,
 )
-from gpt import GPTClient
+from chat import ChatClient
 from assistant import AssistantClient
 from wrapper import ChatManager
 from schemas import (
@@ -231,13 +231,13 @@ async def recieveAnswer(payload: AnswerReceiveRequest):
     return messages
 
 
-@router_chat.post("/gpt")
-async def gpt(payload: ChatRequest):
+@router_chat.post("/completions")
+async def completions(payload: ChatRequest):
     settings = getProviderSettings(payload.source, payload.env, payload.apiKey)
     model = resolveModel(payload.source, payload.model)
     messages = buildMessages(payload)
-    gptClient = GPTClient(settings, serverConfig.promptTemplateDir.as_posix(), usageStore, modelCatalog)
-    contentStream = gptClient.run(model, messages, payload.options) if payload.testTimes is None else gptClient.test(model, messages, payload.options, payload.testTimes)
+    chatClient = ChatClient(settings, serverConfig.promptTemplateDir.as_posix(), usageStore, modelCatalog)
+    contentStream = chatClient.run(model, messages, payload.options) if payload.testTimes is None else chatClient.test(model, messages, payload.options, payload.testTimes)
     return StreamingResponse(
         content = contentStream,
         media_type = "application/json"

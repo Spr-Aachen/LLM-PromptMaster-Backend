@@ -26,7 +26,7 @@ class AssistantClient(object):
         self.usageStore = usageStore
         self.catalog = catalog
         self.assistantClient = createAssistantClient(settings)
-        # 稳定性评分走 GPT 通道
+        # 稳定性评分走对话模型通道
         self.chatClient = createChatClient(settings)
 
         manager = configManager(settings.configPath) if settings.configPath else None

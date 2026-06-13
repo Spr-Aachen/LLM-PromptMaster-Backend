@@ -1,5 +1,5 @@
 """
-GPT 工具类: 注入系统 prompt、流式 JSON 封装与 token 计量
+Chat 工具类: 注入系统 prompt、流式 JSON 封装与 token 计量
 """
 
 import json
@@ -14,12 +14,12 @@ from providers.metering import recordStream
 
 ##############################################################################################################################
 
-logger = logging.getLogger("PromptMaster.gpt")
+logger = logging.getLogger("PromptMaster.chat")
 
 
-class GPTClient(object):
+class ChatClient(object):
     """
-    This class is used to interact with the GPT API
+    This class is used to interact with the chat completions API
     """
     def __init__(self, settings, promptDir, usageStore = None, catalog = None):
         self.settings = settings
