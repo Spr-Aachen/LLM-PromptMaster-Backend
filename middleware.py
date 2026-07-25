@@ -8,7 +8,7 @@ from utils.errors import errorBody
 
 class RequestBodyLimitMiddleware:
     """
-    限制请求体大小，超过上限时直接返回统一错误体
+    限制请求体大小, 超过上限时直接返回统一错误体
     """
     def __init__(self, app: ASGIApp, maxBytes: int):
         self.app = app
