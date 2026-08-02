@@ -2,14 +2,14 @@
 Provider 层入口: 客户端工厂与对外导出的请求/结果类型
 """
 
-import config as serverConfig
-from providers.base import ChatChunk, ChatRequest, ChatResult, ErrorCode, ProviderError, Usage
-from providers.catalog import ModelCatalog
-from providers.client import BaseChatClient
-from providers.metering import UsageStore, recordStream
-from providers.openai_compatible import AzureOpenAIClient, OpenAICompatibleClient
-from providers.settings import ProviderSettings, describeProviders, getProviderSettings
-from providers.transsion import TranssionAssistantClient, TranssionClient
+from app import config as serverConfig
+from app.providers.base import ChatChunk, ChatRequest, ChatResult, ErrorCode, ProviderError, Usage
+from app.providers.catalog import ModelCatalog
+from app.providers.client import BaseChatClient
+from app.providers.metering import UsageStore, recordStream
+from app.providers.openai_compatible import AzureOpenAIClient, OpenAICompatibleClient
+from app.providers.settings import ProviderSettings, describeProviders, getProviderSettings
+from app.providers.transsion import TranssionAssistantClient, TranssionClient
 
 ##############################################################################################################################
 

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Iterator, Optional
 
-from utils.errors import ApiError
+from app.utils.errors import ApiError
 
 ##############################################################################################################################
 

@@ -7,7 +7,7 @@ import time
 import requests
 from typing import Iterator
 
-from providers.base import (
+from app.providers.base import (
     DEFAULT_TIMEOUT,
     ChatChunk,
     ChatRequest,
@@ -18,8 +18,8 @@ from providers.base import (
     parseUsage,
     withRetries,
 )
-from providers.client import BaseChatClient
-from providers.settings import ProviderSettings
+from app.providers.client import BaseChatClient
+from app.providers.settings import ProviderSettings
 
 ##############################################################################################################################
 

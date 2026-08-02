@@ -1,24 +1,18 @@
 from fastapi.routing import APIRouter
 from fastapi.responses import StreamingResponse
-from fastapi.datastructures import UploadFile
-from fastapi import Query
-from typing import List, Optional
+from typing import Optional
 
-import config as serverConfig
-from utils import saveUpload
-from utils.errors import ApiError
-from providers import (
-    ModelCatalog,
-    UsageStore,
+from app import config as serverConfig
+from app.deps import chatManager, modelCatalog, usageStore
+from app.utils.errors import ApiError
+from app.providers import (
     assistantSources,
-    describeProviders,
     getProviderSettings,
     supportedSources,
 )
-from chat import ChatClient
-from assistant import AssistantClient
-from wrapper import ChatManager
-from schemas import (
+from app.chat import ChatClient
+from app.assistant import AssistantClient
+from app.api.schemas import (
     AnswerReceiveRequest,
     ChatRequest,
     ConversationCreateRequest,
@@ -32,8 +26,8 @@ from schemas import (
 
 ##############################################################################################################################
 
-router_utils = APIRouter(
-    prefix = "",
+router_chat = APIRouter(
+    prefix = "/chat",
 )
 
 
@@ -58,35 +52,6 @@ def validateName(name: str, field: str) -> str:
             details = {"field": field, "value": name},
         )
     return name
-
-
-@router_utils.post("/upload")
-async def upload_file(files: List[UploadFile]):
-    serverConfig.uploadDir.mkdir(parents = True, exist_ok = True)
-    uploadedFiles = []
-    for file in files:
-        try:
-            uploadedFiles.append(await saveUpload(file, serverConfig.uploadDir, serverConfig.maxUploadBytes))
-        finally:
-            await file.close()
-    return {"status": "Succeeded", "files": uploadedFiles}
-
-##############################################################################################################################
-
-router_chat = APIRouter(
-    prefix = "/chat",
-)
-
-
-chatManager = ChatManager(
-    promptDir = serverConfig.promptDir.as_posix(),
-    conversationDir = serverConfig.conversationDir.as_posix(),
-    questionDir = serverConfig.questionDir.as_posix()
-)
-
-modelCatalog = ModelCatalog()
-
-usageStore = UsageStore(serverConfig.usageDbPath)
 
 
 def loadMessages(historyID: str) -> list:
@@ -255,41 +220,5 @@ async def assistant(payload: ChatRequest):
         content = contentStream,
         media_type = "application/json"
     )
-
-##############################################################################################################################
-
-router_api = APIRouter(
-    prefix = "/api",
-)
-
-
-@router_api.get("/meta/models")
-async def getMetaModels(refresh: bool = False):
-    """
-    模型目录 + catalogVersion; 客户端仅在版本变化时刷新下拉
-    """
-    return modelCatalog.snapshot(refresh = refresh)
-
-
-@router_api.get("/providers")
-async def getProviders():
-    """
-    provider 列表与配置状态 (密钥脱敏)
-    """
-    return describeProviders()
-
-
-@router_api.get("/usage")
-async def getUsage(rangeName: str = Query("today", alias = "range")):
-    """
-    token / 成本计量汇总 (不限额)
-    """
-    if rangeName not in serverConfig.USAGE_RANGES:
-        raise ApiError(
-            code = "invalid_range",
-            message = f"不支持的统计区间: {rangeName}",
-            details = {"range": rangeName, "supported": list(serverConfig.USAGE_RANGES)},
-        )
-    return usageStore.summary(rangeName)
 
 ##############################################################################################################################

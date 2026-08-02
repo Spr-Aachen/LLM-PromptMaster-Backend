@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Iterator, Optional
 
-from providers.base import ChatRequest, Usage, estimateUsage
+from app.providers.base import ChatRequest, Usage, estimateUsage
 
 ##############################################################################################################################
 

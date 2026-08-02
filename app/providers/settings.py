@@ -10,8 +10,8 @@ from PyEasyUtils import configManager
 from typing import Any, Optional
 
 
-import config as serverConfig
-from providers.base import ErrorCode, ProviderError
+from app import config as serverConfig
+from app.providers.base import ErrorCode, ProviderError
 
 ##############################################################################################################################
 

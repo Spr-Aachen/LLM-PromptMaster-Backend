@@ -52,7 +52,7 @@ USAGE_RANGES = ("today", "7d", "30d")
 
 ##############################################################################################################################
 
-# 源码目录 (server/) 与项目根目录
+# 应用包目录 (server/app) 与 server/ 目录
 appDir = Path(__file__).resolve().parent
 sourceDir = appDir.parent
 
@@ -126,8 +126,8 @@ providersFilePath = workDir.joinpath("providers.yaml")
 usageDbPath = workDir.joinpath("usage.db")
 
 # 随源码分发的资源目录
-configDir = appDir.joinpath("config")
-promptTemplateDir = appDir.joinpath("prompt")
+configDir = sourceDir.joinpath("config")
+promptTemplateDir = sourceDir.joinpath("prompt")
 
 ##############################################################################################################################
 

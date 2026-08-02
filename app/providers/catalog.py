@@ -11,8 +11,8 @@ import time
 import requests
 from typing import Optional
 
-import config as serverConfig
-from providers.base import loadsJson
+from app import config as serverConfig
+from app.providers.base import loadsJson
 
 ##############################################################################################################################
 
@@ -128,7 +128,7 @@ class ModelCatalog:
             self._loadedAt = time.monotonic()
 
     def applyOverrides(self, models: dict) -> None:
-        from providers.settings import readProvidersFile
+        from app.providers.settings import readProvidersFile
 
         overrides = readProvidersFile().get("models")
         if not isinstance(overrides, list):
@@ -170,7 +170,7 @@ class ModelCatalog:
         """
         拉取 provider /models, 失败时保留旧结果并记录日志
         """
-        from providers.settings import discoveryTargets
+        from app.providers.settings import discoveryTargets
 
         for target in discoveryTargets():
             provider = target["source"]
@@ -290,7 +290,7 @@ class ModelCatalog:
         """
         /api/meta/models 的响应体
         """
-        from providers.settings import describeProviders
+        from app.providers.settings import describeProviders
 
         if refresh:
             self.refresh()

@@ -6,7 +6,7 @@ import logging
 import threading
 from typing import Callable, Iterator, Optional
 
-from utils import calc
+from app.utils import calc
 
 ##############################################################################################################################
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("PromptMaster.evaluation")
 
 DEFAULT_THRESHOLD = 0.9
 
-# V1 稳定性评分固定使用 gpt-4o(V2 改为 agent spec 指定)
+# 稳定性评分固定使用 gpt-4o
 STABILITY_MODEL = "gpt-4o"
 
 

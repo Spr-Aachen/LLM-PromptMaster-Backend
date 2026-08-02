@@ -2,7 +2,7 @@ import json
 from starlette.types import ASGIApp, Receive, Scope, Send
 from typing import Optional
 
-from utils.errors import errorBody
+from app.utils.errors import errorBody
 
 ##############################################################################################################################
 

@@ -6,7 +6,7 @@ import json
 import requests
 from typing import Iterator
 
-from providers.base import (
+from app.providers.base import (
     DEFAULT_TIMEOUT,
     ChatChunk,
     ChatRequest,
@@ -20,7 +20,7 @@ from providers.base import (
     streamError,
     withRetries,
 )
-from providers.settings import ProviderSettings
+from app.providers.settings import ProviderSettings
 
 ##############################################################################################################################
 

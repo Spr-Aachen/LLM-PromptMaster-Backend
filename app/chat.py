@@ -7,10 +7,10 @@ import logging
 from PyEasyUtils import configManager
 from typing import Optional, Union
 
-from evaluation import promptTestStream
-from promptTemplates import readTemplate
-from providers import ChatRequest, ProviderError, createChatClient
-from providers.metering import recordStream
+from app.evaluation import promptTestStream
+from app.store import readTemplate
+from app.providers import ChatRequest, ProviderError, createChatClient
+from app.providers.metering import recordStream
 
 ##############################################################################################################################
 

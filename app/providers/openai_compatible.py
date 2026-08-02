@@ -2,7 +2,7 @@
 OpenAI 兼容客户端: 覆盖 openai / deepseek / azure (含 DALL·E 图像生成)
 """
 
-from providers.base import (
+from app.providers.base import (
     DEFAULT_TIMEOUT,
     ChatChunk,
     ChatRequest,
@@ -11,7 +11,7 @@ from providers.base import (
     flattenContent,
     parseUsage,
 )
-from providers.client import BaseChatClient
+from app.providers.client import BaseChatClient
 
 ##############################################################################################################################
 
